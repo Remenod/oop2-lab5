@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Horse Racing Simulator</title>
+    <style>
+        body {
+            font-family: monospace;
+            background: #1e1e2e;
+            color: #cdd6f4;
+            margin: 20px;
+        }
+
+        .container {
+            display: flex;
+            gap: 20px;
+        }
+
+        .betting-panel,
+        .race-panel {
+            background: #313244;
+            padding: 20px;
+            border-radius: 8px;
+        }
+
+        .track {
+            width: 600px;
+            height: 40px;
+            background: #45475a;
+            margin-bottom: 10px;
+            position: relative;
+            border-right: 5px solid #a6e3a1;
+        }
+
+        .horse {
+            width: 30px;
+            height: 30px;
+            position: absolute;
+            top: 5px;
+            border-radius: 50%;
+            transition: left 0.1s linear;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+        }
+
+        th,
+        td {
+            border: 1px solid #585b70;
+            padding: 8px;
+            text-align: left;
+        }
+
+        button,
+        select,
+        input {
+            padding: 8px;
+            margin: 5px 0;
+            background: #89b4fa;
+            border: none;
+            color: #1e1e2e;
+            font-weight: bold;
+            cursor: pointer;
+        }
+
+        button:hover {
+            background: #b4befe;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <div class="betting-panel">
+            <h2>Bettings</h2>
+            <h3 id="balance-display">Balance: 250$</h3>
+            <label>Select Horse:</label><br>
+            <select id="horse-select"></select><br>
+            <label>Bet Amount ($):</label><br>
+            <input type="number" id="bet-amount" min="1" max="250" value="50"><br>
+            <button id="btn-start">BET & START RACE</button>
+            <p id="bet-status"></p>
+        </div>
+        <div class="race-panel">
+            <div id="tracks"></div>
+            <table id="leaderboard">
+                <thead>
+                    <tr>
+                        <th>Position</th>
+                        <th>Color</th>
+                        <th>Name</th>
+                        <th>Time (s)</th>
+                        <th>Coefficient</th>
+                    </tr>
+                </thead>
+                <tbody></tbody>
+            </table>
+        </div>
+    </div>
+
+    <script>
+        const colors = ['#f38ba8', '#89b4fa', '#a6e3a1', '#f9e2af'];
+        const names = ['Lucky', "Ranger", "Willow", "Tucker"];
+        let horses = [];
+        let balance = 250;
+        let activeBet = null;
+        let raceInterval;
+        const trackLength = 570;
+
+        function initData() {
+            horses = names.map((name, i) => ({
+                id: i, name, color: colors[i],
+                speed: Math.random() * 5 + 5,
+                coef: (Math.random() * 2 + 1.1).toFixed(2),
+                pos: 0, time: 0, finished: false
+            }));
+
+            const select = document.getElementById('horse-select');
+            select.innerHTML = '';
+            horses.forEach(h => {
+                select.innerHTML += `<option value="${h.id}">${h.name} (x${h.coef})</option>`;
+            });
+            renderTracks();
+            updateLeaderboard();
+        }
+
+        function renderTracks() {
+            const container = document.getElementById('tracks');
+            container.innerHTML = '';
+            horses.forEach(h => {
+                container.innerHTML += `
+                    <div class="track">
+                        <div class="horse" id="horse-${h.id}" style="background-color: ${h.color}; left: 0px;"></div>
+                    </div>`;
+            });
+        }
+
+        function updateLeaderboard() {
+            const tbody = document.querySelector('#leaderboard tbody');
+            tbody.innerHTML = '';
+            // Sort by position (desc) if running, or time (asc) if finished
+            const sorted = [...horses].sort((a, b) => {
+                if (a.finished && b.finished) return a.time - b.time;
+                return b.pos - a.pos;
+            });
+
+            sorted.forEach((h, i) => {
+                tbody.innerHTML += `
+                    <tr>
+                        <td>${i + 1}</td>
+                        <td style="background-color: ${h.color}; width: 20px;"></td>
+                        <td>${h.name}</td>
+                        <td>${h.time > 0 ? (h.time / 1000).toFixed(2) : '0.00'}</td>
+                        <td>${h.coef}</td>
+                    </tr>`;
+            });
+        }
+
+        async function startRace() {
+            const betAmt = parseInt(document.getElementById('bet-amount').value);
+            const selectedId = parseInt(document.getElementById('horse-select').value);
+
+            if (betAmt > balance) { alert("Not enough balance!"); return; }
+
+            balance -= betAmt;
+            activeBet = { horseId: selectedId, amount: betAmt };
+            document.getElementById('balance-display').innerText = `Balance: ${balance}$`;
+            document.getElementById('btn-start').disabled = true;
+            document.getElementById('bet-status').innerText = "Race in progress...";
+
+            const startTime = performance.now();
+
+            raceInterval = setInterval(() => {
+                let allFinished = true;
+                horses.forEach(h => {
+                    if (!h.finished) {
+                        const acceleration = Math.random() * 0.3 + 0.7; // 0.7 to 1.0
+                        h.pos += h.speed * acceleration;
+                        if (h.pos >= trackLength) {
+                            h.pos = trackLength;
+                            h.finished = true;
+                            h.time = performance.now() - startTime;
+                        } else {
+                            allFinished = false;
+                        }
+                        document.getElementById(`horse-${h.id}`).style.left = `${h.pos}px`;
+                    }
+                });
+
+                updateLeaderboard();
+
+                if (allFinished) {
+                    clearInterval(raceInterval);
+                    finishRace();
+                }
+            }, 50); // 20 frames per second render thread
+        }
+
+        function finishRace() {
+            document.getElementById('btn-start').disabled = false;
+            const winner = [...horses].sort((a, b) => a.time - b.time)[0];
+
+            if (activeBet.horseId === winner.id) {
+                const winAmt = activeBet.amount * winner.coef;
+                balance += winAmt;
+                document.getElementById('bet-status').innerText = `You WON ${winAmt.toFixed(2)}$!`;
+            } else {
+                document.getElementById('bet-status').innerText = `You lost the bet. Winner is ${winner.name}.`;
+            }
+
+            document.getElementById('balance-display').innerText = `Balance: ${balance.toFixed(2)}$`;
+
+            setTimeout(() => {
+                initData();
+                document.getElementById('bet-status').innerText = "";
+            }, 5000);
+        }
+
+        document.getElementById('btn-start').addEventListener('click', startRace);
+        initData();
+    </script>
+</body>
+
+</html>
